@@ -1,0 +1,22 @@
+{
+  "name": "dials",
+  "private": true,
+  "version": "0.0.1",
+  "description": "A dev-only CSS variable editor for design systems",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "turbo": "^1.12.4",
+    "typescript": "^5.4.2",
+    "prettier": "^3.2.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "packageManager": "pnpm@8.15.4"
+}

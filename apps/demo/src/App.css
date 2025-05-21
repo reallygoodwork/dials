@@ -1,0 +1,105 @@
+.app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--spacing-medium);
+}
+
+.app-header {
+  text-align: center;
+  margin-bottom: var(--spacing-large);
+}
+
+.app-header h1 {
+  font-size: var(--font-size-h1);
+  color: var(--color-primary);
+  margin-bottom: var(--spacing-small);
+}
+
+.app-header p {
+  color: var(--color-secondary);
+}
+
+.demo-section {
+  margin-bottom: var(--spacing-large);
+  padding: var(--spacing-medium);
+  border: 1px solid var(--color-secondary);
+  border-radius: var(--border-radius);
+}
+
+.demo-section h2 {
+  font-size: var(--font-size-h2);
+  color: var(--color-primary);
+  margin-bottom: var(--spacing-medium);
+}
+
+/* Color Demo */
+.color-demo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--spacing-medium);
+}
+
+.color-box {
+  padding: var(--spacing-medium);
+  border-radius: var(--border-radius);
+  color: white;
+  text-align: center;
+  font-weight: bold;
+}
+
+.color-box.primary {
+  background-color: var(--color-primary);
+}
+
+.color-box.secondary {
+  background-color: var(--color-secondary);
+}
+
+.color-box.accent {
+  background-color: var(--color-accent);
+}
+
+/* Typography Demo */
+.typography-demo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-medium);
+}
+
+.typography-demo h1 {
+  font-size: var(--font-size-h1);
+}
+
+.typography-demo h2 {
+  font-size: var(--font-size-h2);
+}
+
+.typography-demo h3 {
+  font-size: var(--font-size-h3);
+}
+
+/* Spacing Demo */
+.spacing-demo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--spacing-medium);
+}
+
+.spacing-box {
+  padding: var(--spacing-medium);
+  border: 1px solid var(--color-secondary);
+  border-radius: var(--border-radius);
+  text-align: center;
+}
+
+.spacing-box.small {
+  padding: var(--spacing-small);
+}
+
+.spacing-box.medium {
+  padding: var(--spacing-medium);
+}
+
+.spacing-box.large {
+  padding: var(--spacing-large);
+}
