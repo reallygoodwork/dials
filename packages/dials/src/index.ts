@@ -1,15 +1,15 @@
-import { mountPanel } from './Panel';
-import { useDialsStore, type CSSVariable } from './store';
+import { mountPanel } from "./Panel";
+import { useDialsStore, type CSSVariable } from "./store";
 
 let isInitialized = false;
 
 export function startDials() {
-  if (process.env.NODE_ENV !== 'development') {
-    console.warn('@reallygoodwork/dials is only available in development mode');
+  if (process.env.NODE_ENV !== "development") {
+    console.warn("@reallygoodwork/dials is only available in development mode");
     return;
   }
 
-  if (isInitialized) {
+    if (isInitialized) {
     return {
       store: useDialsStore,
       updateVariable: (name: string, value: string) => {
@@ -20,42 +20,75 @@ export function startDials() {
   }
 
   // Initialize the panel
-  const panel = document.createElement('div');
-  panel.id = 'dials-panel';
+  const panel = document.createElement("div");
+  panel.id = "dials-panel";
   document.body.appendChild(panel);
 
   // Mount the React panel
   mountPanel();
 
-  // Function to detect CSS variables
+    // Function to detect CSS variables from the host page
   const detectCSSVariables = () => {
-    const root = document.documentElement;
-    const computedStyle = getComputedStyle(root);
     const variables: CSSVariable[] = [];
 
-    // Get all CSS variables
-    for (const prop of computedStyle) {
-      if (prop.startsWith('--')) {
-        variables.push({
-          name: prop,
-          value: computedStyle.getPropertyValue(prop).trim(),
-        });
+    const stylesheets = document.styleSheets;
+
+    for (const sheet of Array.from(stylesheets)) {
+      let rules: CSSRuleList;
+
+      try {
+        rules = sheet.cssRules;
+      } catch (e) {
+        continue;
+      }
+
+      for (const rule of Array.from(rules)) {
+        if (rule instanceof CSSStyleRule && rule.selectorText === ":root") {
+          for (const prop of rule.style) {
+            if (prop.startsWith("--")) {
+              variables.push({
+                name: prop,
+                value: rule.style.getPropertyValue(prop).trim(),
+              });
+            }
+          }
+        }
       }
     }
 
-    useDialsStore.getState().setVariables(variables);
+    const store = useDialsStore.getState();
+    store.setVariables(variables);
+
+    // Set up original values
+    const originalValues: { [name: string]: string } = {};
+    variables.forEach(variable => {
+      originalValues[variable.name] = variable.value;
+    });
+    store.setOriginalValues(originalValues);
   };
 
   // Initial detection
-  detectCSSVariables();
-
-  // Monitor media queries
-  const mediaQueries = window.matchMedia('(max-width: 768px)');
-  mediaQueries.addEventListener('change', (e) => {
-    useDialsStore.getState().setActiveMediaQuery(
-      e.matches ? '(max-width: 768px)' : null
-    );
+  if (document.readyState === "loading") {
+    window.addEventListener("DOMContentLoaded", detectCSSVariables);
+  } else {
     detectCSSVariables();
+  }
+
+    // Monitor for stylesheet changes (MutationObserver for dynamic stylesheets)
+  const observer = new MutationObserver((mutations) => {
+    const hasStyleChanges = mutations.some(mutation =>
+      Array.from(mutation.addedNodes).some(node =>
+        node.nodeName === 'STYLE' || node.nodeName === 'LINK'
+      )
+    );
+    if (hasStyleChanges) {
+      setTimeout(detectCSSVariables, 100); // Debounce
+    }
+  });
+
+  observer.observe(document.head, {
+    childList: true,
+    subtree: true
   });
 
   isInitialized = true;

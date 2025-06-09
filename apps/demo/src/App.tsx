@@ -4,11 +4,7 @@ import './App.css';
 
 function App() {
   useEffect(() => {
-    const dials = startDials();
-    if (dials) {
-      const { store } = dials;
-      // Use store if needed
-    }
+    startDials();
     return () => {
       // Cleanup if needed
     };
