@@ -1,6 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { useDialsStore } from "./store";
-import { getVariableType } from "./utils";
+import { getVariableType, parseMediaQuery } from "./utils";
 import { ColorInput } from "./inputs/ColorInput";
 import { NumberInput } from "./inputs/NumberInput";
 import { injectFontStyles } from "./fonts";
@@ -12,12 +12,14 @@ let shadowRoot: ShadowRoot | null = null;
 
 function Panel() {
   const variables = useDialsStore((state) => state.variables);
+  const contextualVariables = useDialsStore((state) => state.contextualVariables);
   const updateVariable = useDialsStore((state) => state.updateVariable);
   const resetVariable = useDialsStore((state) => state.resetVariable);
   const resetAllVariables = useDialsStore((state) => state.resetAllVariables);
   const originalValues = useDialsStore((state) => state.originalValues);
+  const getRewrittenVariables = useDialsStore((state) => state.getRewrittenVariables);
   const [copied, setCopied] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'variables' | 'export'>('variables');
+  const [activeTab, setActiveTab] = useState<'variables' | 'contextual' | 'export'>('variables');
 
   // Store original values on mount - this is now handled by the detection system
   // So we can remove this useEffect as it's handled in index.ts
@@ -87,6 +89,7 @@ function Panel() {
   };
 
   const changedVariables = getChangedVariables();
+  const rewrittenVariables = getRewrittenVariables();
 
   return (
     <div className="dials-panel">
@@ -98,6 +101,12 @@ function Panel() {
             onClick={() => setActiveTab('variables')}
           >
             Variables {changedVariables.length > 0 && <span className="dials-tab-badge">{changedVariables.length}</span>}
+          </button>
+          <button
+            className={`dials-tab ${activeTab === 'contextual' ? 'dials-tab-active' : ''}`}
+            onClick={() => setActiveTab('contextual')}
+          >
+            Contextual {rewrittenVariables.length > 0 && <span className="dials-tab-badge">{rewrittenVariables.length}</span>}
           </button>
           <button
             className={`dials-tab ${activeTab === 'export' ? 'dials-tab-active' : ''}`}
@@ -157,6 +166,92 @@ function Panel() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {activeTab === 'contextual' && (
+        <div className="dials-list">
+          {rewrittenVariables.length === 0 ? (
+            <div className="dials-export-empty">
+              <p>No contextual variables found</p>
+              <p className="dials-export-empty-sub">Variables that are redefined in media queries or other contexts will appear here</p>
+            </div>
+          ) : (
+            rewrittenVariables.map((variable) => {
+              const original = originalValues[variable.name];
+              const changed = original !== undefined && variable.value !== original;
+              return (
+                <div
+                  className="dials-item"
+                  key={variable.name}
+                  style={{
+                    background: changed ? 'rgba(173,250,29,0.08)' : 'rgba(59, 130, 246, 0.05)',
+                    border: '1px solid rgba(59, 130, 246, 0.2)'
+                  }}
+                >
+                  <div className="dials-item-header">
+                    <label className="dials-label">
+                      {variable.name}
+                      <span style={{ color: 'var(--dials-accent)', marginLeft: 4, fontWeight: 700 }} title="Contextual Variable">📱</span>
+                      {changed && (
+                        <span style={{ color: 'var(--dials-accent)', marginLeft: 4, fontWeight: 700 }} title="Changed">*</span>
+                      )}
+                    </label>
+                    <div className="dials-item-actions">
+                      {changed && (
+                        <button
+                          className="dials-reset-btn"
+                          onClick={() => resetVariable(variable.name)}
+                          aria-label="Reset variable"
+                          title="Reset to original value"
+                        >
+                          ↺
+                        </button>
+                      )}
+                      <button
+                        className="dials-copy-btn"
+                        onClick={() => handleCopy(variable.name, variable.value)}
+                        aria-label="Copy variable"
+                      >
+                        {copied === variable.name ? 'Copied!' : '⧉'}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="dials-item-input">
+                    {renderInput(variable)}
+                    {changed && (
+                      <div className="dials-original-value">
+                        {original}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Context information */}
+                  <div style={{ marginTop: '8px', fontSize: '11px', color: 'var(--dials-muted)' }}>
+                    <div style={{ fontWeight: 600, marginBottom: '4px' }}>Defined in {variable.contexts.length} context{variable.contexts.length > 1 ? 's' : ''}:</div>
+                    {variable.contexts.map((context, index) => (
+                      <div key={index} style={{ marginBottom: '2px', paddingLeft: '8px' }}>
+                        {context.condition ? (
+                          <span>
+                            <span style={{ color: 'var(--dials-accent)' }}>@{context.conditionType}</span>
+                            {' '}
+                            <span style={{ fontFamily: 'var(--dials-font-family-mono)' }}>
+                              {parseMediaQuery(context.condition)}
+                            </span>
+                            {context.selector !== ':root' && (
+                              <span> → {context.selector}</span>
+                            )}
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--dials-foreground)' }}>{context.selector}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       )}
 

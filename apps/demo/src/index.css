@@ -21,15 +21,92 @@
 
   /* Border Radius */
   --border-radius: 0.25rem;
+
+  /* Layout */
+  --container-max-width: 1200px;
+  --grid-gap: 1rem;
+  --sidebar-width: 300px;
 }
 
-/* Responsive adjustments */
+/* Mobile Responsive adjustments */
 @media (max-width: 768px) {
   :root {
     --font-size-h1: 2rem;
     --font-size-h2: 1.75rem;
     --font-size-h3: 1.5rem;
     --spacing-large: 1.5rem;
+    --grid-gap: 0.75rem;
+    --container-max-width: 100%;
+    --sidebar-width: 100%;
+  }
+}
+
+/* Tablet adjustments */
+@media (min-width: 769px) and (max-width: 1024px) {
+  :root {
+    --font-size-h1: 2.25rem;
+    --container-max-width: 800px;
+    --sidebar-width: 250px;
+    --spacing-large: 1.75rem;
+  }
+}
+
+/* Dark theme */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-primary: #0d6efd;
+    --color-secondary: #adb5bd;
+    --color-accent: #20c997;
+    --color-background: #212529;
+    --color-text: #dee2e6;
+  }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  :root {
+    --color-primary: #000000;
+    --color-secondary: #666666;
+    --color-accent: #ff0000;
+    --border-radius: 0px;
+  }
+}
+
+/* Reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition-duration: 0s;
+    --animation-duration: 0s;
+  }
+}
+
+/* Print styles */
+@media print {
+  :root {
+    --color-primary: #000000;
+    --color-secondary: #666666;
+    --color-accent: #000000;
+    --color-background: #ffffff;
+    --color-text: #000000;
+    --font-size-base: 12pt;
+    --spacing-large: 1rem;
+  }
+}
+
+/* Container queries for responsive containers */
+@container (max-width: 400px) {
+  :root {
+    --spacing-medium: 0.75rem;
+    --font-size-base: 14px;
+  }
+}
+
+/* Large screen optimizations */
+@media (min-width: 1400px) {
+  :root {
+    --container-max-width: 1320px;
+    --font-size-h1: 3rem;
+    --spacing-large: 2.5rem;
   }
 }
 

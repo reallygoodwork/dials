@@ -8,6 +8,21 @@ interface ParsedNumber {
   unit: string;
 }
 
+// New interfaces for contextual CSS variable detection
+export interface CSSVariableContext {
+  selector: string;
+  condition?: string; // For @media, @supports, etc.
+  conditionType?: 'media' | 'supports' | 'container' | 'layer';
+  specificity: number;
+}
+
+export interface ContextualCSSVariable {
+  name: string;
+  value: string;
+  contexts: CSSVariableContext[];
+  isRewritten: boolean; // True if this variable is overridden in different contexts
+}
+
 export function isColor(value: string): boolean {
   // Also accept OKLCH format
   if (value.toLowerCase().startsWith('oklch(')) {
@@ -105,4 +120,130 @@ export function getColorInfo(color: tinycolor.Instance): Record<ColorFormat, str
     hsla: formatColor(color, 'hsla'),
     oklch: formatColor(color, 'oklch')
   };
+}
+
+export function parseMediaQuery(mediaText: string): string {
+  // Clean up and format media query for display
+  return mediaText.replace(/^\s*and\s*/i, '').trim();
+}
+
+export function getContextSpecificity(context: CSSVariableContext): number {
+  // Simple specificity calculation - media queries override base styles
+  let specificity = 0;
+
+  if (context.condition) {
+    specificity += 100; // At-rules have higher specificity
+  }
+
+  if (context.selector === ':root') {
+    specificity += 10;
+  } else {
+    // Count specificity based on selector complexity
+    const selectorParts = context.selector.split(/[\s>+~,]/);
+    specificity += selectorParts.length;
+  }
+
+  return specificity;
+}
+
+export function detectContextualVariables(): ContextualCSSVariable[] {
+  const variableMap = new Map<string, ContextualCSSVariable>();
+
+  const stylesheets = document.styleSheets;
+
+  for (const sheet of Array.from(stylesheets)) {
+    let rules: CSSRuleList;
+
+    try {
+      rules = sheet.cssRules;
+    } catch (e) {
+      continue;
+    }
+
+    processRules(Array.from(rules), variableMap);
+  }
+
+  // Mark variables as rewritten if they appear in multiple contexts
+  for (const variable of variableMap.values()) {
+    variable.isRewritten = variable.contexts.length > 1;
+    // Sort contexts by specificity
+    variable.contexts.sort((a, b) => getContextSpecificity(a) - getContextSpecificity(b));
+  }
+
+  return Array.from(variableMap.values());
+}
+
+function processRules(rules: CSSRule[], variableMap: Map<string, ContextualCSSVariable>, parentCondition?: CSSVariableContext) {
+  for (const rule of rules) {
+    if (rule instanceof CSSStyleRule) {
+      // Regular style rule
+      const context: CSSVariableContext = {
+        selector: rule.selectorText,
+        condition: parentCondition?.condition,
+        conditionType: parentCondition?.conditionType,
+        specificity: 0
+      };
+      context.specificity = getContextSpecificity(context);
+
+      extractVariablesFromStyle(rule.style, context, variableMap);
+    } else if (rule instanceof CSSMediaRule) {
+      // Media query rule
+      const mediaContext: CSSVariableContext = {
+        selector: '',
+        condition: rule.media.mediaText,
+        conditionType: 'media',
+        specificity: 0
+      };
+
+      processRules(Array.from(rule.cssRules), variableMap, mediaContext);
+    } else if (rule instanceof CSSSupportsRule) {
+      // Supports rule
+      const supportsContext: CSSVariableContext = {
+        selector: '',
+        condition: rule.conditionText,
+        conditionType: 'supports',
+        specificity: 0
+      };
+
+      processRules(Array.from(rule.cssRules), variableMap, supportsContext);
+    } else if ('cssRules' in rule && rule.cssRules) {
+      // Other at-rules that contain nested rules
+      processRules(Array.from(rule.cssRules as CSSRuleList), variableMap, parentCondition);
+    }
+  }
+}
+
+function extractVariablesFromStyle(style: CSSStyleDeclaration, context: CSSVariableContext, variableMap: Map<string, ContextualCSSVariable>) {
+  for (const prop of style) {
+    if (prop.startsWith("--")) {
+      const value = style.getPropertyValue(prop).trim();
+
+      if (!variableMap.has(prop)) {
+        variableMap.set(prop, {
+          name: prop,
+          value: value,
+          contexts: [],
+          isRewritten: false
+        });
+      }
+
+      const variable = variableMap.get(prop)!;
+
+      // Add this context if it's not already present
+      const existingContext = variable.contexts.find(c =>
+        c.selector === context.selector &&
+        c.condition === context.condition &&
+        c.conditionType === context.conditionType
+      );
+
+      if (!existingContext) {
+        variable.contexts.push({...context});
+      }
+
+      // Update value if this context has higher specificity
+      if (getContextSpecificity(context) >= getContextSpecificity(variable.contexts[variable.contexts.length - 1])) {
+        variable.value = value;
+      }
+    }
+  }
 }

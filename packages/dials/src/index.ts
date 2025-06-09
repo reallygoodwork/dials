@@ -1,5 +1,6 @@
 import { mountPanel } from "./Panel";
 import { useDialsStore, type CSSVariable } from "./store";
+import { detectContextualVariables } from "./utils";
 
 let isInitialized = false;
 
@@ -29,8 +30,18 @@ export function startDials() {
 
     // Function to detect CSS variables from the host page
   const detectCSSVariables = () => {
-    const variables: CSSVariable[] = [];
+    // Use the new contextual detection
+    const contextualVariables = detectContextualVariables();
 
+    // Convert to the legacy format for backward compatibility
+    const variables: CSSVariable[] = contextualVariables.map(cv => ({
+      name: cv.name,
+      value: cv.value,
+      mediaQuery: cv.contexts.find(c => c.conditionType === 'media')?.condition
+    }));
+
+    // Also detect just :root variables for legacy support
+    const legacyVariables: CSSVariable[] = [];
     const stylesheets = document.styleSheets;
 
     for (const sheet of Array.from(stylesheets)) {
@@ -46,7 +57,7 @@ export function startDials() {
         if (rule instanceof CSSStyleRule && rule.selectorText === ":root") {
           for (const prop of rule.style) {
             if (prop.startsWith("--")) {
-              variables.push({
+              legacyVariables.push({
                 name: prop,
                 value: rule.style.getPropertyValue(prop).trim(),
               });
@@ -57,14 +68,30 @@ export function startDials() {
     }
 
     const store = useDialsStore.getState();
-    store.setVariables(variables);
 
-    // Set up original values
+    // Set both contextual and legacy variables
+    store.setContextualVariables(contextualVariables);
+    store.setVariables(legacyVariables);
+
+    // Set up original values from the base :root context
     const originalValues: { [name: string]: string } = {};
-    variables.forEach(variable => {
-      originalValues[variable.name] = variable.value;
+    contextualVariables.forEach(variable => {
+      // Use the value from the :root context as the original value
+      const rootContext = variable.contexts.find(c => c.selector === ':root' && !c.condition);
+      if (rootContext) {
+        originalValues[variable.name] = variable.value;
+      } else {
+        // Fallback to current value if no root context found
+        originalValues[variable.name] = variable.value;
+      }
     });
     store.setOriginalValues(originalValues);
+
+    // Log contextual information for debugging
+    const rewrittenVariables = contextualVariables.filter(v => v.isRewritten);
+    if (rewrittenVariables.length > 0) {
+      console.log(`[Dials] Found ${rewrittenVariables.length} contextual variables:`, rewrittenVariables);
+    }
   };
 
   // Initial detection
