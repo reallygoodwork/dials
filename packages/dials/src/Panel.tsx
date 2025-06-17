@@ -1,12 +1,12 @@
 import { createRoot } from "react-dom/client";
 import { useDialsStore } from "./store";
-import { getVariableType, parseMediaQuery } from "./utils";
+import { getVariableType, parseMediaQuery, getCurrentActiveContexts } from "./utils";
 import { ColorInput } from "./inputs/ColorInput";
 import { NumberInput } from "./inputs/NumberInput";
 import { injectFontStyles } from "./fonts";
 import css from "./styles.css?inline";
 import { injectThemeVariables } from "./themeVariables";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 let root: ReturnType<typeof createRoot> | null = null;
 let shadowRoot: ShadowRoot | null = null;
 
@@ -14,15 +14,46 @@ function Panel() {
   const variables = useDialsStore((state) => state.variables);
   const contextualVariables = useDialsStore((state) => state.contextualVariables);
   const updateVariable = useDialsStore((state) => state.updateVariable);
+  const updateContextualVariable = useDialsStore((state) => state.updateContextualVariable);
   const resetVariable = useDialsStore((state) => state.resetVariable);
   const resetAllVariables = useDialsStore((state) => state.resetAllVariables);
   const originalValues = useDialsStore((state) => state.originalValues);
+  const isUserChanged = useDialsStore((state) => state.isUserChanged);
+  const getCurrentActiveContext = useDialsStore((state) => state.getCurrentActiveContext);
   const getRewrittenVariables = useDialsStore((state) => state.getRewrittenVariables);
   const [copied, setCopied] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'variables' | 'contextual' | 'export'>('variables');
+  const [currentContexts, setCurrentContexts] = useState<string[]>([]);
 
-  // Store original values on mount - this is now handled by the detection system
-  // So we can remove this useEffect as it's handled in index.ts
+  // Monitor for context changes (window resize, etc.)
+  useEffect(() => {
+    const updateContexts = () => {
+      setCurrentContexts(getCurrentActiveContexts());
+    };
+
+    updateContexts(); // Initial check
+
+    // Listen for media query changes
+    const mediaQueries = [
+      '(max-width: 768px)',
+      '(min-width: 769px) and (max-width: 1024px)',
+      '(min-width: 1400px)',
+      '(prefers-color-scheme: dark)',
+      '(prefers-contrast: high)',
+      '(prefers-reduced-motion: reduce)'
+    ];
+
+    const listeners: MediaQueryList[] = [];
+    mediaQueries.forEach(query => {
+      const mq = window.matchMedia(query);
+      mq.addListener(updateContexts);
+      listeners.push(mq);
+    });
+
+    return () => {
+      listeners.forEach(mq => mq.removeListener(updateContexts));
+    };
+  }, []);
 
   const handleCopy = (name: string, value: string) => {
     navigator.clipboard.writeText(`${name}: ${value};`);
@@ -31,10 +62,7 @@ function Panel() {
   };
 
   const getChangedVariables = () => {
-    return variables.filter(variable => {
-      const original = originalValues[variable.name];
-      return original !== undefined && variable.value !== original;
-    });
+    return variables.filter(variable => isUserChanged(variable.name));
   };
 
   const handleExportCopy = (format: 'css' | 'json') => {
@@ -58,22 +86,23 @@ function Panel() {
     setTimeout(() => setCopied(null), 1200);
   };
 
-  const renderInput = (variable: { name: string; value: string }) => {
+  const renderInput = (variable: { name: string; value: string }, isContextual = false) => {
     const type = getVariableType(variable.value);
+    const updateFn = isContextual ? updateContextualVariable : updateVariable;
 
     switch (type) {
       case "color":
         return (
           <ColorInput
             value={variable.value}
-            onChange={(value) => updateVariable(variable.name, value)}
+            onChange={(value) => updateFn(variable.name, value)}
           />
         );
       case "number":
         return (
           <NumberInput
             value={variable.value}
-            onChange={(value) => updateVariable(variable.name, value)}
+            onChange={(value) => updateFn(variable.name, value)}
           />
         );
       default:
@@ -81,11 +110,27 @@ function Panel() {
           <input
             type="text"
             value={variable.value}
-            onChange={(e) => updateVariable(variable.name, e.target.value)}
+            onChange={(e) => updateFn(variable.name, e.target.value)}
             className="dials-input"
           />
         );
     }
+  };
+
+  const getContextDisplayName = (condition: string | undefined, conditionType: string | undefined) => {
+    if (!condition) return 'Base';
+
+    if (conditionType === 'media') {
+      if (condition.includes('max-width: 768px')) return 'Mobile';
+      if (condition.includes('min-width: 769px') && condition.includes('max-width: 1024px')) return 'Tablet';
+      if (condition.includes('min-width: 1400px')) return 'Large Screen';
+      if (condition.includes('prefers-color-scheme: dark')) return 'Dark Theme';
+      if (condition.includes('prefers-contrast: high')) return 'High Contrast';
+      if (condition.includes('prefers-reduced-motion')) return 'Reduced Motion';
+      if (condition.includes('print')) return 'Print';
+    }
+
+    return parseMediaQuery(condition);
   };
 
   const changedVariables = getChangedVariables();
@@ -120,23 +165,22 @@ function Panel() {
       {activeTab === 'variables' && (
         <div className="dials-list">
           {variables.map((variable) => {
-            const original = originalValues[variable.name];
-            const changed = original !== undefined && variable.value !== original;
+            const userChanged = isUserChanged(variable.name);
             return (
               <div
                 className="dials-item"
                 key={variable.name}
-                style={{ background: changed ? 'rgba(173,250,29,0.08)' : undefined }}
+                style={{ background: userChanged ? 'rgba(173,250,29,0.08)' : undefined }}
               >
                 <div className="dials-item-header">
                   <label className="dials-label">
                     {variable.name}
-                    {changed && (
-                      <span style={{ color: 'var(--dials-accent)', marginLeft: 4, fontWeight: 700 }} title="Changed">*</span>
+                    {userChanged && (
+                      <span style={{ color: 'var(--dials-accent)', marginLeft: 4, fontWeight: 700 }} title="Changed by user">*</span>
                     )}
                   </label>
                   <div className="dials-item-actions">
-                    {changed && (
+                    {userChanged && (
                       <button
                         className="dials-reset-btn"
                         onClick={() => resetVariable(variable.name)}
@@ -157,9 +201,9 @@ function Panel() {
                 </div>
                 <div className="dials-item-input">
                   {renderInput(variable)}
-                  {changed && (
+                  {userChanged && (
                     <div className="dials-original-value">
-                      {original}
+                      was: {originalValues[variable.name]}
                     </div>
                   )}
                 </div>
@@ -177,80 +221,87 @@ function Panel() {
               <p className="dials-export-empty-sub">Variables that are redefined in media queries or other contexts will appear here</p>
             </div>
           ) : (
-            rewrittenVariables.map((variable) => {
-              const original = originalValues[variable.name];
-              const changed = original !== undefined && variable.value !== original;
-              return (
-                <div
-                  className="dials-item"
-                  key={variable.name}
-                  style={{
-                    background: changed ? 'rgba(173,250,29,0.08)' : 'rgba(59, 130, 246, 0.05)',
-                    border: '1px solid rgba(59, 130, 246, 0.2)'
-                  }}
-                >
-                  <div className="dials-item-header">
-                    <label className="dials-label">
-                      {variable.name}
-                      <span style={{ color: 'var(--dials-accent)', marginLeft: 4, fontWeight: 700 }} title="Contextual Variable">📱</span>
-                      {changed && (
-                        <span style={{ color: 'var(--dials-accent)', marginLeft: 4, fontWeight: 700 }} title="Changed">*</span>
-                      )}
-                    </label>
-                    <div className="dials-item-actions">
-                      {changed && (
+            <>
+              {currentContexts.length > 1 && (
+                <div className="dials-context-info">
+                  <p><strong>Active contexts:</strong> {currentContexts.filter(c => c !== 'base').join(', ') || 'base only'}</p>
+                  <p className="dials-context-sub">Changes will affect the currently active context</p>
+                </div>
+              )}
+
+              {rewrittenVariables.map((variable) => {
+                const userChanged = isUserChanged(variable.name);
+                const activeContext = getCurrentActiveContext(variable);
+                const activeContextName = getContextDisplayName(activeContext?.condition, activeContext?.conditionType);
+
+                return (
+                  <div
+                    className="dials-item dials-contextual-item"
+                    key={variable.name}
+                    style={{
+                      background: userChanged ? 'rgba(173,250,29,0.08)' : 'rgba(59, 130, 246, 0.05)',
+                      border: '1px solid rgba(59, 130, 246, 0.2)'
+                    }}
+                  >
+                    <div className="dials-item-header">
+                      <label className="dials-label">
+                        {variable.name}
+                        <span className="dials-context-badge">{activeContextName}</span>
+                        {userChanged && (
+                          <span style={{ color: 'var(--dials-accent)', marginLeft: 4, fontWeight: 700 }} title="Changed by user">*</span>
+                        )}
+                      </label>
+                      <div className="dials-item-actions">
+                        {userChanged && (
+                          <button
+                            className="dials-reset-btn"
+                            onClick={() => resetVariable(variable.name)}
+                            aria-label="Reset variable"
+                            title="Reset to original value"
+                          >
+                            ↺
+                          </button>
+                        )}
                         <button
-                          className="dials-reset-btn"
-                          onClick={() => resetVariable(variable.name)}
-                          aria-label="Reset variable"
-                          title="Reset to original value"
+                          className="dials-copy-btn"
+                          onClick={() => handleCopy(variable.name, variable.value)}
+                          aria-label="Copy variable"
                         >
-                          ↺
+                          {copied === variable.name ? 'Copied!' : '⧉'}
                         </button>
+                      </div>
+                    </div>
+                    <div className="dials-item-input">
+                      {renderInput(variable, true)}
+                      {userChanged && (
+                        <div className="dials-original-value">
+                          was: {originalValues[variable.name]}
+                        </div>
                       )}
-                      <button
-                        className="dials-copy-btn"
-                        onClick={() => handleCopy(variable.name, variable.value)}
-                        aria-label="Copy variable"
-                      >
-                        {copied === variable.name ? 'Copied!' : '⧉'}
-                      </button>
+                    </div>
+
+                    {/* Context information */}
+                    <div className="dials-context-list">
+                      <div className="dials-context-title">Available in {variable.contexts.length} context{variable.contexts.length > 1 ? 's' : ''}:</div>
+                      {variable.contexts.map((context, index) => {
+                        const isActive = context === activeContext;
+                        const displayName = getContextDisplayName(context.condition, context.conditionType);
+
+                        return (
+                          <div
+                            key={index}
+                            className={`dials-context-item ${isActive ? 'dials-context-active' : ''}`}
+                          >
+                            <span className="dials-context-name">{displayName}</span>
+                            {isActive && <span className="dials-context-current">← editing</span>}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
-                  <div className="dials-item-input">
-                    {renderInput(variable)}
-                    {changed && (
-                      <div className="dials-original-value">
-                        {original}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Context information */}
-                  <div style={{ marginTop: '8px', fontSize: '11px', color: 'var(--dials-muted)' }}>
-                    <div style={{ fontWeight: 600, marginBottom: '4px' }}>Defined in {variable.contexts.length} context{variable.contexts.length > 1 ? 's' : ''}:</div>
-                    {variable.contexts.map((context, index) => (
-                      <div key={index} style={{ marginBottom: '2px', paddingLeft: '8px' }}>
-                        {context.condition ? (
-                          <span>
-                            <span style={{ color: 'var(--dials-accent)' }}>@{context.conditionType}</span>
-                            {' '}
-                            <span style={{ fontFamily: 'var(--dials-font-family-mono)' }}>
-                              {parseMediaQuery(context.condition)}
-                            </span>
-                            {context.selector !== ':root' && (
-                              <span> → {context.selector}</span>
-                            )}
-                          </span>
-                        ) : (
-                          <span style={{ color: 'var(--dials-foreground)' }}>{context.selector}</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })
+                );
+              })}
+            </>
           )}
         </div>
       )}

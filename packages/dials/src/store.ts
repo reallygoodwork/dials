@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ContextualCSSVariable, CSSVariableContext } from './utils';
+import { ContextualCSSVariable, CSSVariableContext, getActiveContextForVariable, getCurrentActiveContexts } from './utils';
 
 export interface CSSVariable {
   name: string;
@@ -11,6 +11,8 @@ export interface DialsState {
   variables: CSSVariable[];
   contextualVariables: ContextualCSSVariable[];
   originalValues: { [name: string]: string };
+  userChanges: { [name: string]: string }; // Track user-made changes
+  contextualUserChanges: { [variableName: string]: { [contextKey: string]: string } }; // Track changes per context
   activeMediaQuery: string | null;
   showContextualView: boolean;
   setVariables: (variables: CSSVariable[]) => void;
@@ -19,16 +21,21 @@ export interface DialsState {
   setActiveMediaQuery: (query: string | null) => void;
   setShowContextualView: (show: boolean) => void;
   updateVariable: (name: string, value: string) => void;
+  updateContextualVariable: (name: string, value: string, context?: CSSVariableContext) => void;
   resetVariable: (name: string) => void;
   resetAllVariables: () => void;
   getContextInfo: (variableName: string) => CSSVariableContext[];
   getRewrittenVariables: () => ContextualCSSVariable[];
+  isUserChanged: (variableName: string) => boolean;
+  getCurrentActiveContext: (variable: ContextualCSSVariable) => CSSVariableContext | null;
 }
 
 export const useDialsStore = create<DialsState>((set, get) => ({
   variables: [],
   contextualVariables: [],
   originalValues: {},
+  userChanges: {},
+  contextualUserChanges: {},
   activeMediaQuery: null,
   showContextualView: false,
 
@@ -40,6 +47,11 @@ export const useDialsStore = create<DialsState>((set, get) => ({
 
   updateVariable: (name, value) => {
     console.log(`[Dials] Updating ${name} to: ${value}`);
+
+    // Track this as a user change
+    set((state) => ({
+      userChanges: { ...state.userChanges, [name]: value }
+    }));
 
     // Update the CSS variable on the document
     document.documentElement.style.setProperty(name, value);
@@ -55,12 +67,62 @@ export const useDialsStore = create<DialsState>((set, get) => ({
     }));
   },
 
+  updateContextualVariable: (name, value, context) => {
+    console.log(`[Dials] Updating contextual ${name} to: ${value}`, context);
+
+    const state = get();
+    const variable = state.contextualVariables.find(v => v.name === name);
+
+    if (!variable) return;
+
+    // Determine which context we're editing
+    const targetContext = context || getActiveContextForVariable(variable);
+    if (!targetContext) return;
+
+    // Create a context key for tracking changes
+    const contextKey = targetContext.condition || 'base';
+
+    // Track this as a contextual user change
+    set((state) => ({
+      contextualUserChanges: {
+        ...state.contextualUserChanges,
+        [name]: {
+          ...state.contextualUserChanges[name],
+          [contextKey]: value
+        }
+      }
+    }));
+
+    // For now, update the CSS variable on the document
+    // In a more advanced implementation, we'd update the specific context
+    document.documentElement.style.setProperty(name, value);
+
+    // Update the store state
+    set((state) => ({
+      contextualVariables: state.contextualVariables.map((v) =>
+        v.name === name ? { ...v, value } : v
+      ),
+    }));
+  },
+
   resetVariable: (name) => {
     const state = get();
     const originalValue = state.originalValues[name];
 
     if (originalValue !== undefined) {
       console.log(`[Dials] Resetting ${name} to: ${originalValue}`);
+
+      // Remove from user changes
+      const newUserChanges = { ...state.userChanges };
+      delete newUserChanges[name];
+
+      const newContextualUserChanges = { ...state.contextualUserChanges };
+      delete newContextualUserChanges[name];
+
+      set({
+        userChanges: newUserChanges,
+        contextualUserChanges: newContextualUserChanges
+      });
 
       // Reset the CSS variable on the document
       document.documentElement.style.setProperty(name, originalValue);
@@ -79,6 +141,9 @@ export const useDialsStore = create<DialsState>((set, get) => ({
 
   resetAllVariables: () => {
     console.log(`[Dials] Resetting all variables`);
+
+    // Clear all user changes
+    set({ userChanges: {}, contextualUserChanges: {} });
 
     // Reset all CSS variables on the document and update store
     set((state) => ({
@@ -110,5 +175,14 @@ export const useDialsStore = create<DialsState>((set, get) => ({
   getRewrittenVariables: () => {
     const state = get();
     return state.contextualVariables.filter(v => v.isRewritten);
+  },
+
+  isUserChanged: (variableName) => {
+    const state = get();
+    return variableName in state.userChanges || variableName in state.contextualUserChanges;
+  },
+
+  getCurrentActiveContext: (variable) => {
+    return getActiveContextForVariable(variable);
   },
 }));

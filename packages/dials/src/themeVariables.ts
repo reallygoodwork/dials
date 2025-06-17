@@ -19,6 +19,7 @@ export const injectThemeVariables = (shadowRoot: ShadowRoot) => {
       --dials-label-control-gap: 12px;
       --dials-font-size: 12px;
       --dials-offset: 1.25rem;
+      --dials-alpha-picker-background: #EEE;
       --dials-surface-border-radius: 8px;
       --dials-input-border-radius: 8px;
       --dials-input-tracking: 0.05em;

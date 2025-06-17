@@ -14,6 +14,7 @@ export interface CSSVariableContext {
   condition?: string; // For @media, @supports, etc.
   conditionType?: 'media' | 'supports' | 'container' | 'layer';
   specificity: number;
+  value: string; // The actual value in this context
 }
 
 export interface ContextualCSSVariable {
@@ -49,6 +50,197 @@ export function getVariableType(value: string): VariableType {
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+export function parseMediaQuery(mediaText: string): string {
+  // Clean up and format media query for display
+  return mediaText.replace(/^\s*and\s*/i, '').trim();
+}
+
+export function getContextSpecificity(context: CSSVariableContext): number {
+  // Simple specificity calculation - media queries override base styles
+  let specificity = 0;
+
+  if (context.condition) {
+    specificity += 100; // At-rules have higher specificity
+  }
+
+  if (context.selector === ':root') {
+    specificity += 10;
+  } else {
+    // Count specificity based on selector complexity
+    const selectorParts = context.selector.split(/[\s>+~,]/);
+    specificity += selectorParts.length;
+  }
+
+  return specificity;
+}
+
+export function detectContextualVariables(): ContextualCSSVariable[] {
+  console.log('[Dials] Starting contextual variable detection...');
+
+  // Map to store all variable occurrences
+  const variableOccurrences = new Map<string, CSSVariableContext[]>();
+
+  const stylesheets = document.styleSheets;
+  console.log(`[Dials] Found ${stylesheets.length} stylesheets`);
+
+  for (let i = 0; i < stylesheets.length; i++) {
+    const sheet = stylesheets[i];
+    let rules: CSSRuleList;
+
+    try {
+      rules = sheet.cssRules;
+      console.log(`[Dials] Stylesheet ${i}: ${rules.length} rules`);
+    } catch (e) {
+      console.log(`[Dials] Stylesheet ${i}: Access denied (CORS)`);
+      continue;
+    }
+
+    collectVariables(Array.from(rules), variableOccurrences);
+  }
+
+  console.log(`[Dials] Found variables:`, Array.from(variableOccurrences.keys()));
+
+  // Process into contextual variables
+  const contextualVariables: ContextualCSSVariable[] = [];
+
+  for (const [variableName, contexts] of variableOccurrences.entries()) {
+    if (contexts.length === 0) continue;
+
+    // Find base value (from :root without conditions)
+    const baseContext = contexts.find(c => c.selector === ':root' && !c.condition);
+    const baseValue = baseContext?.value || contexts[0].value;
+
+    // Check if this variable has different values in different contexts
+    const uniqueValues = new Set(contexts.map(c => c.value));
+    const isRewritten = uniqueValues.size > 1;
+
+    console.log(`[Dials] Variable ${variableName}:`, {
+      contexts: contexts.length,
+      uniqueValues: Array.from(uniqueValues),
+      isRewritten
+    });
+
+    // Only include if it's actually rewritten OR if we want to show all variables
+    if (isRewritten) {
+      contextualVariables.push({
+        name: variableName,
+        value: baseValue,
+        contexts: contexts.sort((a, b) => getContextSpecificity(a) - getContextSpecificity(b)),
+        isRewritten
+      });
+    }
+  }
+
+  console.log(`[Dials] Returning ${contextualVariables.length} contextual variables`);
+  return contextualVariables;
+}
+
+function collectVariables(
+  rules: CSSRule[],
+  variableOccurrences: Map<string, CSSVariableContext[]>,
+  parentCondition?: { condition: string; conditionType: 'media' | 'supports' | 'container' | 'layer' }
+) {
+  for (const rule of rules) {
+    if (rule instanceof CSSStyleRule) {
+      // Process style rule
+      const selectorText = rule.selectorText;
+
+      // Extract CSS variables from this rule
+      for (let i = 0; i < rule.style.length; i++) {
+        const property = rule.style[i];
+        if (property.startsWith('--')) {
+          const value = rule.style.getPropertyValue(property).trim();
+
+          const context: CSSVariableContext = {
+            selector: selectorText,
+            condition: parentCondition?.condition,
+            conditionType: parentCondition?.conditionType,
+            specificity: 0,
+            value: value
+          };
+          context.specificity = getContextSpecificity(context);
+
+          if (!variableOccurrences.has(property)) {
+            variableOccurrences.set(property, []);
+          }
+          variableOccurrences.get(property)!.push(context);
+
+          console.log(`[Dials] Found variable: ${property} = ${value} in ${selectorText}${parentCondition ? ` (${parentCondition.conditionType}: ${parentCondition.condition})` : ''}`);
+        }
+      }
+    } else if (rule instanceof CSSMediaRule) {
+      // Process media query
+      console.log(`[Dials] Processing media rule: ${rule.media.mediaText}`);
+      collectVariables(
+        Array.from(rule.cssRules),
+        variableOccurrences,
+        { condition: rule.media.mediaText, conditionType: 'media' }
+      );
+    } else if (rule instanceof CSSSupportsRule) {
+      // Process supports rule
+      console.log(`[Dials] Processing supports rule: ${rule.conditionText}`);
+      collectVariables(
+        Array.from(rule.cssRules),
+        variableOccurrences,
+        { condition: rule.conditionText, conditionType: 'supports' }
+      );
+    } else if ('cssRules' in rule && rule.cssRules) {
+      // Process other nested rules
+      collectVariables(Array.from(rule.cssRules as CSSRuleList), variableOccurrences, parentCondition);
+    }
+  }
+}
+
+export function getCurrentActiveContexts(): string[] {
+  const activeContexts: string[] = [];
+
+  // Always add the base context
+  activeContexts.push('base');
+
+  // Check media queries that are currently matching
+  const mediaQueries = [
+    { query: '(max-width: 768px)', name: 'mobile' },
+    { query: '(min-width: 769px) and (max-width: 1024px)', name: 'tablet' },
+    { query: '(min-width: 1400px)', name: 'large-screen' },
+    { query: '(prefers-color-scheme: dark)', name: 'dark-theme' },
+    { query: '(prefers-contrast: high)', name: 'high-contrast' },
+    { query: '(prefers-reduced-motion: reduce)', name: 'reduced-motion' }
+  ];
+
+  mediaQueries.forEach(({ query, name }) => {
+    if (window.matchMedia(query).matches) {
+      activeContexts.push(name);
+    }
+  });
+
+  return activeContexts;
+}
+
+export function getActiveContextForVariable(variable: ContextualCSSVariable): CSSVariableContext | null {
+  // Find the most specific matching context
+  // Sort by specificity (higher is more specific)
+  const sortedContexts = [...variable.contexts].sort((a, b) => getContextSpecificity(b) - getContextSpecificity(a));
+
+  for (const context of sortedContexts) {
+    if (!context.condition) {
+      // Base context - always matches but has lowest priority
+      continue;
+    }
+
+    // Check if this context's media query is currently active
+    if (context.conditionType === 'media' && window.matchMedia(context.condition).matches) {
+      return context;
+    }
+  }
+
+  // Fall back to base context
+  return variable.contexts.find(c => c.selector === ':root' && !c.condition) || null;
+}
+
+export function getVariableValueForContext(variable: ContextualCSSVariable, context: CSSVariableContext): string {
+  return context.value;
 }
 
 function rgbToOklch(r: number, g: number, b: number, alpha: number): string {
@@ -120,130 +312,4 @@ export function getColorInfo(color: tinycolor.Instance): Record<ColorFormat, str
     hsla: formatColor(color, 'hsla'),
     oklch: formatColor(color, 'oklch')
   };
-}
-
-export function parseMediaQuery(mediaText: string): string {
-  // Clean up and format media query for display
-  return mediaText.replace(/^\s*and\s*/i, '').trim();
-}
-
-export function getContextSpecificity(context: CSSVariableContext): number {
-  // Simple specificity calculation - media queries override base styles
-  let specificity = 0;
-
-  if (context.condition) {
-    specificity += 100; // At-rules have higher specificity
-  }
-
-  if (context.selector === ':root') {
-    specificity += 10;
-  } else {
-    // Count specificity based on selector complexity
-    const selectorParts = context.selector.split(/[\s>+~,]/);
-    specificity += selectorParts.length;
-  }
-
-  return specificity;
-}
-
-export function detectContextualVariables(): ContextualCSSVariable[] {
-  const variableMap = new Map<string, ContextualCSSVariable>();
-
-  const stylesheets = document.styleSheets;
-
-  for (const sheet of Array.from(stylesheets)) {
-    let rules: CSSRuleList;
-
-    try {
-      rules = sheet.cssRules;
-    } catch (e) {
-      continue;
-    }
-
-    processRules(Array.from(rules), variableMap);
-  }
-
-  // Mark variables as rewritten if they appear in multiple contexts
-  for (const variable of variableMap.values()) {
-    variable.isRewritten = variable.contexts.length > 1;
-    // Sort contexts by specificity
-    variable.contexts.sort((a, b) => getContextSpecificity(a) - getContextSpecificity(b));
-  }
-
-  return Array.from(variableMap.values());
-}
-
-function processRules(rules: CSSRule[], variableMap: Map<string, ContextualCSSVariable>, parentCondition?: CSSVariableContext) {
-  for (const rule of rules) {
-    if (rule instanceof CSSStyleRule) {
-      // Regular style rule
-      const context: CSSVariableContext = {
-        selector: rule.selectorText,
-        condition: parentCondition?.condition,
-        conditionType: parentCondition?.conditionType,
-        specificity: 0
-      };
-      context.specificity = getContextSpecificity(context);
-
-      extractVariablesFromStyle(rule.style, context, variableMap);
-    } else if (rule instanceof CSSMediaRule) {
-      // Media query rule
-      const mediaContext: CSSVariableContext = {
-        selector: '',
-        condition: rule.media.mediaText,
-        conditionType: 'media',
-        specificity: 0
-      };
-
-      processRules(Array.from(rule.cssRules), variableMap, mediaContext);
-    } else if (rule instanceof CSSSupportsRule) {
-      // Supports rule
-      const supportsContext: CSSVariableContext = {
-        selector: '',
-        condition: rule.conditionText,
-        conditionType: 'supports',
-        specificity: 0
-      };
-
-      processRules(Array.from(rule.cssRules), variableMap, supportsContext);
-    } else if ('cssRules' in rule && rule.cssRules) {
-      // Other at-rules that contain nested rules
-      processRules(Array.from(rule.cssRules as CSSRuleList), variableMap, parentCondition);
-    }
-  }
-}
-
-function extractVariablesFromStyle(style: CSSStyleDeclaration, context: CSSVariableContext, variableMap: Map<string, ContextualCSSVariable>) {
-  for (const prop of style) {
-    if (prop.startsWith("--")) {
-      const value = style.getPropertyValue(prop).trim();
-
-      if (!variableMap.has(prop)) {
-        variableMap.set(prop, {
-          name: prop,
-          value: value,
-          contexts: [],
-          isRewritten: false
-        });
-      }
-
-      const variable = variableMap.get(prop)!;
-
-      // Add this context if it's not already present
-      const existingContext = variable.contexts.find(c =>
-        c.selector === context.selector &&
-        c.condition === context.condition &&
-        c.conditionType === context.conditionType
-      );
-
-      if (!existingContext) {
-        variable.contexts.push({...context});
-      }
-
-      // Update value if this context has higher specificity
-      if (getContextSpecificity(context) >= getContextSpecificity(variable.contexts[variable.contexts.length - 1])) {
-        variable.value = value;
-      }
-    }
-  }
 }
