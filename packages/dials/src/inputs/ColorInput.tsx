@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AlphaPicker, HuePicker } from "react-color";
 import tinycolor from "tinycolor2";
 import { ColorFormat, formatColor, getColorInfo } from "../utils";
@@ -13,6 +13,14 @@ export function ColorInput({ value, onChange }: ColorInputProps) {
   const color = tinycolor(value);
   const [localColor, setLocalColor] = useState(color);
   const [selectedFormat, setSelectedFormat] = useState<ColorFormat>("hex");
+
+  // Sync localColor with value prop changes
+  useEffect(() => {
+    const newColor = tinycolor(value);
+    if (newColor.isValid()) {
+      setLocalColor(newColor);
+    }
+  }, [value]);
 
   const handleColorChange = (newColor: tinycolor.Instance) => {
     setLocalColor(newColor);
@@ -46,8 +54,8 @@ export function ColorInput({ value, onChange }: ColorInputProps) {
           className="dials-color-swatch"
           onClick={() => setIsOpen(!isOpen)}
           style={{
-            backgroundColor: value,
-            boxShadow: `0 0 0 1px ${color.isDark() ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.1)"}`,
+            backgroundColor: localColor.toString(),
+            boxShadow: `0 0 0 1px ${localColor.isDark() ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.1)"}`,
           }}
         />
       </div>

@@ -100,6 +100,67 @@
   align-items: center;
 }
 
+.dials-item-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.dials-compact-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+.dials-compact-context {
+  color: var(--dials-accent);
+  font-weight: 500;
+  font-family: var(--dials-font-family-mono);
+  text-transform: uppercase;
+  font-size: 0.625rem;
+}
+
+.dials-compact-value {
+  color: var(--dials-foreground);
+  font-family: var(--dials-font-family-mono);
+  font-size: 0.75rem;
+}
+
+.dials-compact-color-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+}
+
+.dials-expand-btn {
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: var(--dials-muted);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s;
+  line-height: 1;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dials-expand-btn:hover {
+  background-color: hsla(0, 0%, 100%, 0.05);
+  color: var(--dials-accent);
+}
+
 .dials-item-actions {
   display: flex;
   align-items: center;
@@ -413,18 +474,21 @@
 }
 
 .dials-context-tab {
+  flex-shrink: 0;
   flex: 1;
   background: none;
   border: none;
-  padding: 6px 10px;
+  padding: 8px 4px;
   border-radius: calc(var(--dials-input-border-radius) - 2px);
-  font-size: 0.75rem;
+  font-size: 0.6rem;
   font-weight: 500;
   color: var(--dials-muted);
+  line-height: 1;
   cursor: pointer;
   transition: all 0.2s;
   text-align: center;
-  font-family: var(--dials-font-family);
+  text-transform: uppercase;
+  font-family: var(--dials-font-family-mono);
   position: relative;
 }
 
@@ -437,6 +501,18 @@
   background-color: var(--dials-accent);
   color: var(--dials-accent-foreground);
   font-weight: 600;
+}
+
+.dials-context-tab.currently-active {
+  background-color: rgba(173, 250, 29, 0.15);
+  color: var(--dials-foreground);
+  border: 1px solid rgba(173, 250, 29, 0.3);
+}
+
+.dials-context-tab.currently-active.active {
+  background-color: var(--dials-accent);
+  color: var(--dials-accent-foreground);
+  border: 1px solid var(--dials-accent);
 }
 
 .dials-context-tab.inactive-context {
@@ -461,7 +537,7 @@
   font-size: 0.75rem;
   color: #856404;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
 }
 
@@ -475,6 +551,17 @@
   font-weight: 400;
   opacity: 0.8;
   margin-top: 2px;
+}
+
+.dials-context-active-indicator {
+  margin-left: 4px;
+  color: rgba(173, 250, 29, 0.8);
+  font-size: 0.5rem;
+  vertical-align: middle;
+}
+
+.dials-context-tab.active .dials-context-active-indicator {
+  color: var(--dials-accent-foreground);
 }
 
 .dials-context-tab-content {
@@ -499,6 +586,7 @@
   padding: 0.25rem 0;
   font-size: 0.75rem;
   font-family: var(--dials-font-family-mono);
+  gap: 0.5rem;
 }
 
 .dials-context-value.current {
@@ -506,6 +594,21 @@
   border-radius: 4px;
   padding: 0.25rem 0.5rem;
   border-left: 3px solid var(--dials-accent);
+}
+
+.dials-context-value.changed {
+  background: rgba(173, 250, 29, 0.08);
+}
+
+.dials-context-value.current.changed {
+  background: rgba(173, 250, 29, 0.15);
+  border-left-color: var(--dials-accent);
+}
+
+.dials-context-changed-indicator {
+  color: var(--dials-accent);
+  font-weight: 700;
+  margin-left: 4px;
 }
 
 .dials-context-value-label {
@@ -518,6 +621,67 @@
   color: var(--dials-foreground);
   font-weight: 400;
   text-align: right;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.dials-context-original-value {
+  text-decoration: line-through;
+  opacity: 0.6;
+  color: var(--dials-muted);
+}
+
+.dials-context-arrow {
+  color: var(--dials-muted);
+  font-size: 0.75rem;
+}
+
+.dials-context-new-value {
+  color: var(--dials-accent);
+  font-weight: 600;
+}
+
+.dials-context-unchanged-value {
+  color: var(--dials-foreground);
+  font-weight: 400;
+}
+
+.dials-context-value.variable-changed {
+  background: rgba(173, 250, 29, 0.05);
+}
+
+.dials-context-color-swatches {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+  margin-left: 0.5rem;
+}
+
+.dials-context-color-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+}
+
+.dials-context-color-swatch-original {
+  opacity: 0.6;
+  position: relative;
+}
+
+.dials-context-color-swatch-original::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--dials-muted);
+  transform: translateY(-50%);
 }
 
 
@@ -672,6 +836,23 @@
 /* Contextual Variables Styles */
 .dials-contextual-item {
   border-left: 3px solid var(--dials-accent) !important;
+  transition: all 0.2s ease;
+}
+
+.dials-contextual-item.collapsed {
+  /* Compact collapsed state */
+}
+
+.dials-contextual-item.expanded {
+  /* Full expanded state */
+}
+
+.dials-contextual-item.collapsed .dials-context-tabs {
+  display: none;
+}
+
+.dials-contextual-item.expanded .dials-compact-info {
+  display: none;
 }
 
 .dials-context-info {

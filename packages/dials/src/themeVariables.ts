@@ -7,6 +7,7 @@ export const injectThemeVariables = (shadowRoot: ShadowRoot) => {
   style.textContent = `
     :host {
       --dials-accent: #adfa1d;
+      --dials-accent-foreground: #09090B;
       --dials-background: #09090B;
       --dials-foreground: #FAFAFA;
       --dials-muted: #a1a1aa;

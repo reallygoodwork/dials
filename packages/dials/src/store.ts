@@ -28,7 +28,21 @@ export interface DialsState {
   getRewrittenVariables: () => ContextualCSSVariable[];
   isUserChanged: (variableName: string) => boolean;
   getCurrentActiveContext: (variable: ContextualCSSVariable) => CSSVariableContext | null;
+  updateContextualCSS: () => void;
 }
+
+// Style element for injecting contextual CSS
+let dialsStyleElement: HTMLStyleElement | null = null;
+
+// Get or create the style element for contextual CSS
+const getDialsStyleElement = () => {
+  if (!dialsStyleElement) {
+    dialsStyleElement = document.createElement('style');
+    dialsStyleElement.id = 'dials-contextual-styles';
+    document.head.appendChild(dialsStyleElement);
+  }
+  return dialsStyleElement;
+};
 
 export const useDialsStore = create<DialsState>((set, get) => ({
   variables: [],
@@ -53,9 +67,6 @@ export const useDialsStore = create<DialsState>((set, get) => ({
       userChanges: { ...state.userChanges, [name]: value }
     }));
 
-    // Update the CSS variable on the document
-    document.documentElement.style.setProperty(name, value);
-
     // Update the store state
     set((state) => ({
       variables: state.variables.map((v) =>
@@ -65,6 +76,9 @@ export const useDialsStore = create<DialsState>((set, get) => ({
         v.name === name ? { ...v, value } : v
       ),
     }));
+
+    // Regenerate all contextual CSS
+    get().updateContextualCSS();
   },
 
   updateContextualVariable: (name, value, context, selectedContextOverride) => {
@@ -106,15 +120,15 @@ export const useDialsStore = create<DialsState>((set, get) => ({
       }
     }));
 
-    // Update the CSS variable on the document
-    document.documentElement.style.setProperty(name, value);
-
     // Update the store state
     set((state) => ({
       contextualVariables: state.contextualVariables.map((v) =>
         v.name === name ? { ...v, value } : v
       ),
     }));
+
+    // Regenerate all contextual CSS
+    get().updateContextualCSS();
   },
 
   resetVariable: (name) => {
@@ -136,9 +150,6 @@ export const useDialsStore = create<DialsState>((set, get) => ({
         contextualUserChanges: newContextualUserChanges
       });
 
-      // Reset the CSS variable on the document
-      document.documentElement.style.setProperty(name, originalValue);
-
       // Update the store state
       set((state) => ({
         variables: state.variables.map((v) =>
@@ -148,6 +159,9 @@ export const useDialsStore = create<DialsState>((set, get) => ({
           v.name === name ? { ...v, value: originalValue } : v
         ),
       }));
+
+      // Regenerate all contextual CSS
+      get().updateContextualCSS();
     }
   },
 
@@ -157,12 +171,11 @@ export const useDialsStore = create<DialsState>((set, get) => ({
     // Clear all user changes
     set({ userChanges: {}, contextualUserChanges: {} });
 
-    // Reset all CSS variables on the document and update store
+    // Update store with original values
     set((state) => ({
       variables: state.variables.map((v) => {
         const originalValue = state.originalValues[v.name];
         if (originalValue !== undefined) {
-          document.documentElement.style.setProperty(v.name, originalValue);
           return { ...v, value: originalValue };
         }
         return v;
@@ -170,12 +183,15 @@ export const useDialsStore = create<DialsState>((set, get) => ({
       contextualVariables: state.contextualVariables.map((v) => {
         const originalValue = state.originalValues[v.name];
         if (originalValue !== undefined) {
-          document.documentElement.style.setProperty(v.name, originalValue);
           return { ...v, value: originalValue };
         }
         return v;
       }),
     }));
+
+    // Clear all contextual CSS (since there are no user changes)
+    const styleElement = getDialsStyleElement();
+    styleElement.textContent = '';
   },
 
   getContextInfo: (variableName) => {
@@ -197,4 +213,47 @@ export const useDialsStore = create<DialsState>((set, get) => ({
   getCurrentActiveContext: (variable) => {
     return getActiveContextForVariable(variable);
   },
+
+  // Generate and inject contextual CSS rules
+  updateContextualCSS: () => {
+    const state = get();
+    const styleElement = getDialsStyleElement();
+    const cssRules: string[] = [];
+
+    // Collect all base changes (both regular userChanges and contextual base changes)
+    const baseChanges: string[] = [];
+    
+    // Add regular user changes for variables that don't have contextual overrides
+    Object.entries(state.userChanges).forEach(([variableName, value]) => {
+      if (!state.contextualUserChanges[variableName]) {
+        baseChanges.push(`  ${variableName}: ${value};`);
+      }
+    });
+
+    // Add base contextual changes
+    Object.entries(state.contextualUserChanges).forEach(([variableName, contexts]) => {
+      if (contexts.base) {
+        baseChanges.push(`  ${variableName}: ${contexts.base};`);
+      }
+    });
+
+    // Add base :root rule if there are any base changes
+    if (baseChanges.length > 0) {
+      cssRules.push(`:root {\n${baseChanges.join('\n')}\n}`);
+    }
+
+    // Add non-base contextual changes
+    Object.entries(state.contextualUserChanges).forEach(([variableName, contexts]) => {
+      Object.entries(contexts).forEach(([contextKey, value]) => {
+        if (contextKey !== 'base') {
+          // Non-base contextual changes go in media queries
+          cssRules.push(`@media ${contextKey} {\n  :root {\n    ${variableName}: ${value};\n  }\n}`);
+        }
+      });
+    });
+
+    // Update the style element content
+    styleElement.textContent = cssRules.join('\n\n');
+  },
+
 }));
