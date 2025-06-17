@@ -71,7 +71,7 @@ export function startDials() {
 
     // Set both contextual and legacy variables
     store.setContextualVariables(contextualVariables);
-    store.setVariables(legacyVariables);
+    store.setVariables(variables.length > 0 ? variables : legacyVariables);
 
     // Set up original values from the base :root context
     const originalValues: { [name: string]: string } = {};

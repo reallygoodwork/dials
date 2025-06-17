@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ContextualCSSVariable, CSSVariableContext, getActiveContextForVariable, getCurrentActiveContexts } from './utils';
+import { ContextualCSSVariable, CSSVariableContext, getActiveContextForVariable } from './utils';
 
 export interface CSSVariable {
   name: string;
@@ -21,7 +21,7 @@ export interface DialsState {
   setActiveMediaQuery: (query: string | null) => void;
   setShowContextualView: (show: boolean) => void;
   updateVariable: (name: string, value: string) => void;
-  updateContextualVariable: (name: string, value: string, context?: CSSVariableContext) => void;
+  updateContextualVariable: (name: string, value: string, context?: CSSVariableContext, selectedContextOverride?: string) => void;
   resetVariable: (name: string) => void;
   resetAllVariables: () => void;
   getContextInfo: (variableName: string) => CSSVariableContext[];
@@ -67,8 +67,8 @@ export const useDialsStore = create<DialsState>((set, get) => ({
     }));
   },
 
-  updateContextualVariable: (name, value, context) => {
-    console.log(`[Dials] Updating contextual ${name} to: ${value}`, context);
+  updateContextualVariable: (name, value, context, selectedContextOverride) => {
+    console.log(`[Dials] Updating contextual ${name} to: ${value}`, context, selectedContextOverride);
 
     const state = get();
     const variable = state.contextualVariables.find(v => v.name === name);
@@ -76,7 +76,20 @@ export const useDialsStore = create<DialsState>((set, get) => ({
     if (!variable) return;
 
     // Determine which context we're editing
-    const targetContext = context || getActiveContextForVariable(variable);
+    let targetContext = context;
+    
+    if (!targetContext && selectedContextOverride) {
+      if (selectedContextOverride === 'base') {
+        targetContext = variable.contexts.find(c => !c.condition);
+      } else {
+        targetContext = variable.contexts.find(c => c.condition === selectedContextOverride);
+      }
+    }
+    
+    if (!targetContext) {
+      targetContext = getActiveContextForVariable(variable) || undefined;
+    }
+    
     if (!targetContext) return;
 
     // Create a context key for tracking changes
@@ -93,8 +106,7 @@ export const useDialsStore = create<DialsState>((set, get) => ({
       }
     }));
 
-    // For now, update the CSS variable on the document
-    // In a more advanced implementation, we'd update the specific context
+    // Update the CSS variable on the document
     document.documentElement.style.setProperty(name, value);
 
     // Update the store state

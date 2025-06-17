@@ -12,7 +12,6 @@ let shadowRoot: ShadowRoot | null = null;
 
 function Panel() {
   const variables = useDialsStore((state) => state.variables);
-  const contextualVariables = useDialsStore((state) => state.contextualVariables);
   const updateVariable = useDialsStore((state) => state.updateVariable);
   const updateContextualVariable = useDialsStore((state) => state.updateContextualVariable);
   const resetVariable = useDialsStore((state) => state.resetVariable);
@@ -22,16 +21,18 @@ function Panel() {
   const getCurrentActiveContext = useDialsStore((state) => state.getCurrentActiveContext);
   const getRewrittenVariables = useDialsStore((state) => state.getRewrittenVariables);
   const [copied, setCopied] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'variables' | 'contextual' | 'export'>('variables');
-  const [currentContexts, setCurrentContexts] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState<'variables' | 'export'>('variables');
+  const [selectedContexts, setSelectedContexts] = useState<{[variableName: string]: string}>({}); // Track selected context per variable
 
-  // Monitor for context changes (window resize, etc.)
+  // Monitor for context changes (window resize, etc.) to trigger re-renders
   useEffect(() => {
-    const updateContexts = () => {
-      setCurrentContexts(getCurrentActiveContexts());
+    const updateActiveContexts = () => {
+      // Force re-render by updating a timestamp or counter
+      // This ensures the Auto tab indicator updates in real-time
+      setSelectedContexts(prev => ({ ...prev }));
     };
 
-    updateContexts(); // Initial check
+    updateActiveContexts(); // Initial check
 
     // Listen for media query changes
     const mediaQueries = [
@@ -46,12 +47,12 @@ function Panel() {
     const listeners: MediaQueryList[] = [];
     mediaQueries.forEach(query => {
       const mq = window.matchMedia(query);
-      mq.addListener(updateContexts);
+      mq.addListener(updateActiveContexts);
       listeners.push(mq);
     });
 
     return () => {
-      listeners.forEach(mq => mq.removeListener(updateContexts));
+      listeners.forEach(mq => mq.removeListener(updateActiveContexts));
     };
   }, []);
 
@@ -86,23 +87,30 @@ function Panel() {
     setTimeout(() => setCopied(null), 1200);
   };
 
-  const renderInput = (variable: { name: string; value: string }, isContextual = false) => {
+  const renderInput = (variable: { name: string; value: string }, isContextual = false, contextOverride?: string) => {
     const type = getVariableType(variable.value);
-    const updateFn = isContextual ? updateContextualVariable : updateVariable;
+
+    const handleChange = (value: string) => {
+      if (isContextual) {
+        updateContextualVariable(variable.name, value, undefined, contextOverride);
+      } else {
+        updateVariable(variable.name, value);
+      }
+    };
 
     switch (type) {
       case "color":
         return (
           <ColorInput
             value={variable.value}
-            onChange={(value) => updateFn(variable.name, value)}
+            onChange={handleChange}
           />
         );
       case "number":
         return (
           <NumberInput
             value={variable.value}
-            onChange={(value) => updateFn(variable.name, value)}
+            onChange={handleChange}
           />
         );
       default:
@@ -110,7 +118,7 @@ function Panel() {
           <input
             type="text"
             value={variable.value}
-            onChange={(e) => updateFn(variable.name, e.target.value)}
+            onChange={(e) => handleChange(e.target.value)}
             className="dials-input"
           />
         );
@@ -133,8 +141,50 @@ function Panel() {
     return parseMediaQuery(condition);
   };
 
+  const isContextCurrentlyActive = (context: any) => {
+    if (!context.condition) {
+      // Base context is always "active" in the sense that it's the fallback
+      return true;
+    }
+    
+    if (context.conditionType === 'media') {
+      return window.matchMedia(context.condition).matches;
+    }
+    
+    return false;
+  };
+
   const changedVariables = getChangedVariables();
   const rewrittenVariables = getRewrittenVariables();
+
+
+  // Function to get unified variables list with context awareness
+  const getUnifiedVariables = () => {
+    const contextualMap = new Map();
+    rewrittenVariables.forEach(variable => {
+      contextualMap.set(variable.name, variable);
+    });
+
+    return variables.map(variable => {
+      const contextualVar = contextualMap.get(variable.name);
+      if (contextualVar) {
+        // This variable has contextual versions
+        return {
+          ...variable,
+          isContextual: true,
+          contextualVariable: contextualVar
+        };
+      }
+
+      return {
+        ...variable,
+        isContextual: false,
+        contextualVariable: null
+      };
+    });
+  };
+
+  const unifiedVariables = getUnifiedVariables();
 
   return (
     <div className="dials-panel">
@@ -148,12 +198,6 @@ function Panel() {
             Variables {changedVariables.length > 0 && <span className="dials-tab-badge">{changedVariables.length}</span>}
           </button>
           <button
-            className={`dials-tab ${activeTab === 'contextual' ? 'dials-tab-active' : ''}`}
-            onClick={() => setActiveTab('contextual')}
-          >
-            Contextual {rewrittenVariables.length > 0 && <span className="dials-tab-badge">{rewrittenVariables.length}</span>}
-          </button>
-          <button
             className={`dials-tab ${activeTab === 'export' ? 'dials-tab-active' : ''}`}
             onClick={() => setActiveTab('export')}
           >
@@ -164,75 +208,47 @@ function Panel() {
 
       {activeTab === 'variables' && (
         <div className="dials-list">
-          {variables.map((variable) => {
-            const userChanged = isUserChanged(variable.name);
-            return (
-              <div
-                className="dials-item"
-                key={variable.name}
-                style={{ background: userChanged ? 'rgba(173,250,29,0.08)' : undefined }}
-              >
-                <div className="dials-item-header">
-                  <label className="dials-label">
-                    {variable.name}
-                    {userChanged && (
-                      <span style={{ color: 'var(--dials-accent)', marginLeft: 4, fontWeight: 700 }} title="Changed by user">*</span>
-                    )}
-                  </label>
-                  <div className="dials-item-actions">
-                    {userChanged && (
-                      <button
-                        className="dials-reset-btn"
-                        onClick={() => resetVariable(variable.name)}
-                        aria-label="Reset variable"
-                        title="Reset to original value"
-                      >
-                        ↺
-                      </button>
-                    )}
-                    <button
-                      className="dials-copy-btn"
-                      onClick={() => handleCopy(variable.name, variable.value)}
-                      aria-label="Copy variable"
-                    >
-                      {copied === variable.name ? 'Copied!' : '⧉'}
-                    </button>
-                  </div>
-                </div>
-                <div className="dials-item-input">
-                  {renderInput(variable)}
-                  {userChanged && (
-                    <div className="dials-original-value">
-                      was: {originalValues[variable.name]}
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+            {unifiedVariables.map((variable) => {
+              const userChanged = isUserChanged(variable.name);
+              const isContextualVar = variable.isContextual;
 
-      {activeTab === 'contextual' && (
-        <div className="dials-list">
-          {rewrittenVariables.length === 0 ? (
-            <div className="dials-export-empty">
-              <p>No contextual variables found</p>
-              <p className="dials-export-empty-sub">Variables that are redefined in media queries or other contexts will appear here</p>
-            </div>
-          ) : (
-            <>
-              {currentContexts.length > 1 && (
-                <div className="dials-context-info">
-                  <p><strong>Active contexts:</strong> {currentContexts.filter(c => c !== 'base').join(', ') || 'base only'}</p>
-                  <p className="dials-context-sub">Changes will affect the currently active context</p>
-                </div>
-              )}
+              if (isContextualVar && variable.contextualVariable) {
+                // Render contextual variable with tabs
+                const contextualVar = variable.contextualVariable;
 
-              {rewrittenVariables.map((variable) => {
-                const userChanged = isUserChanged(variable.name);
-                const activeContext = getCurrentActiveContext(variable);
-                const activeContextName = getContextDisplayName(activeContext?.condition, activeContext?.conditionType);
+                // Get unique contexts and deduplicate
+                const uniqueContexts = [];
+                const baseContext = contextualVar.contexts.find((c: any) => !c.condition);
+                const conditionalContexts = contextualVar.contexts.filter((c: any) => c.condition);
+
+                if (baseContext) {
+                  uniqueContexts.push({ ...baseContext, contextId: 'base' });
+                }
+
+                const seenConditions = new Set();
+                conditionalContexts.forEach((context: any) => {
+                  if (!seenConditions.has(context.condition)) {
+                    seenConditions.add(context.condition);
+                    uniqueContexts.push({ ...context, contextId: context.condition });
+                  }
+                });
+
+                // Get currently selected context for this variable
+                const selectedContext = selectedContexts[variable.name] || 'auto';
+                let activeContext;
+                let currentValue;
+
+                if (selectedContext === 'auto') {
+                  activeContext = getCurrentActiveContext(contextualVar);
+                  currentValue = activeContext?.value || variable.value;
+                } else {
+                  const selectedContextObj = uniqueContexts.find(c =>
+                    (selectedContext === 'base' && !c.condition) ||
+                    (c.condition === selectedContext)
+                  );
+                  activeContext = selectedContextObj;
+                  currentValue = selectedContextObj?.value || variable.value;
+                }
 
                 return (
                   <div
@@ -246,7 +262,127 @@ function Panel() {
                     <div className="dials-item-header">
                       <label className="dials-label">
                         {variable.name}
-                        <span className="dials-context-badge">{activeContextName}</span>
+                        {userChanged && (
+                          <span style={{ color: 'var(--dials-accent)', marginLeft: 4, fontWeight: 700 }} title="Changed by user">*</span>
+                        )}
+                      </label>
+                      <div className="dials-item-actions">
+                        {userChanged && (
+                          <button
+                            className="dials-reset-btn"
+                            onClick={() => resetVariable(variable.name)}
+                            aria-label="Reset variable"
+                            title="Reset to original value"
+                          >
+                            ↺
+                          </button>
+                        )}
+                        <button
+                          className="dials-copy-btn"
+                          onClick={() => handleCopy(variable.name, currentValue)}
+                          aria-label="Copy variable"
+                        >
+                          {copied === variable.name ? 'Copied!' : '⧉'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Context Tabs */}
+                    <div className="dials-context-tabs">
+                      <div className="dials-context-tabs-header">
+                        <button
+                          className={`dials-context-tab ${selectedContext === 'auto' ? 'active' : ''}`}
+                          onClick={() => setSelectedContexts(prev => ({ ...prev, [variable.name]: 'auto' }))}
+                        >
+                          Auto
+                          {selectedContext === 'auto' && (
+                            <span className="dials-context-tab-indicator">
+                              ({getContextDisplayName(activeContext?.condition, activeContext?.conditionType)})
+                            </span>
+                          )}
+                        </button>
+                        {uniqueContexts.map((context: any, index: number) => {
+                          const displayName = getContextDisplayName(context.condition, context.conditionType);
+                          const contextId = context.contextId;
+                          const isActive = selectedContext === contextId;
+                          const isCurrentlyActive = isContextCurrentlyActive(context);
+
+                          return (
+                            <button
+                              key={index}
+                              className={`dials-context-tab ${isActive ? 'active' : ''} ${!isCurrentlyActive && context.condition ? 'inactive-context' : ''}`}
+                              onClick={() => setSelectedContexts(prev => ({ ...prev, [variable.name]: contextId }))}
+                              title={!isCurrentlyActive && context.condition ? `${displayName} context is not currently active in browser` : `Edit ${displayName} context`}
+                            >
+                              {displayName}
+                              {!isCurrentlyActive && context.condition && (
+                                <span className="dials-context-inactive-indicator">⚬</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="dials-context-tab-content">
+                        {/* Show warning for non-active contexts */}
+                        {selectedContext !== 'auto' && (() => {
+                          const selectedContextObj = uniqueContexts.find(c => 
+                            (selectedContext === 'base' && !c.condition) || 
+                            (c.condition === selectedContext)
+                          );
+                          const isCurrentlyActive = selectedContextObj ? isContextCurrentlyActive(selectedContextObj) : false;
+                          
+                          if (!isCurrentlyActive && selectedContextObj?.condition) {
+                            return (
+                              <div className="dials-context-warning">
+                                <span className="dials-context-warning-icon">⚠️</span>
+                                This context is not currently active in your browser. Changes won't be visible until the context becomes active.
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
+                        
+                        {renderInput({ name: variable.name, value: currentValue }, true, selectedContext === 'auto' ? undefined : selectedContext)}
+                        {userChanged && (
+                          <div className="dials-original-value">
+                            was: {originalValues[variable.name]}
+                          </div>
+                        )}
+
+                        {/* Show value comparison */}
+                        {uniqueContexts.length > 1 && (
+                          <div className="dials-context-comparison">
+                            {uniqueContexts.map((context: any, index: number) => {
+                              const displayName = getContextDisplayName(context.condition, context.conditionType);
+                              const isCurrentContext = selectedContext === 'auto' ?
+                                context === activeContext :
+                                ((selectedContext === 'base' && !context.condition) || (selectedContext === context.condition));
+
+                              return (
+                                <div key={index} className={`dials-context-value ${isCurrentContext ? 'current' : ''}`}>
+                                  <span className="dials-context-value-label">{displayName}:</span>
+                                  <span className="dials-context-value-text">{context.value}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              } else {
+                // Render regular variable
+                return (
+                  <div
+                    className="dials-item"
+                    key={variable.name}
+                    style={{ background: userChanged ? 'rgba(173,250,29,0.08)' : undefined }}
+                  >
+                    <div className="dials-item-header">
+                      <label className="dials-label">
+                        {variable.name}
                         {userChanged && (
                           <span style={{ color: 'var(--dials-accent)', marginLeft: 4, fontWeight: 700 }} title="Changed by user">*</span>
                         )}
@@ -272,39 +408,19 @@ function Panel() {
                       </div>
                     </div>
                     <div className="dials-item-input">
-                      {renderInput(variable, true)}
+                      {renderInput(variable)}
                       {userChanged && (
                         <div className="dials-original-value">
                           was: {originalValues[variable.name]}
                         </div>
                       )}
                     </div>
-
-                    {/* Context information */}
-                    <div className="dials-context-list">
-                      <div className="dials-context-title">Available in {variable.contexts.length} context{variable.contexts.length > 1 ? 's' : ''}:</div>
-                      {variable.contexts.map((context, index) => {
-                        const isActive = context === activeContext;
-                        const displayName = getContextDisplayName(context.condition, context.conditionType);
-
-                        return (
-                          <div
-                            key={index}
-                            className={`dials-context-item ${isActive ? 'dials-context-active' : ''}`}
-                          >
-                            <span className="dials-context-name">{displayName}</span>
-                            {isActive && <span className="dials-context-current">← editing</span>}
-                          </div>
-                        );
-                      })}
-                    </div>
                   </div>
                 );
-              })}
-            </>
-          )}
-        </div>
-      )}
+              }
+            })}
+          </div>
+        )}
 
       {activeTab === 'export' && (
         <div className="dials-export">
