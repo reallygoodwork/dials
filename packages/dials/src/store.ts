@@ -7,6 +7,14 @@ export interface CSSVariable {
   mediaQuery?: string;
 }
 
+export type PanelPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+
+export interface PanelState {
+  position: PanelPosition;
+  isDragging: boolean;
+  customPosition?: { x: number; y: number };
+}
+
 export interface DialsState {
   variables: CSSVariable[];
   contextualVariables: ContextualCSSVariable[];
@@ -15,6 +23,7 @@ export interface DialsState {
   contextualUserChanges: { [variableName: string]: { [contextKey: string]: string } }; // Track changes per context
   activeMediaQuery: string | null;
   showContextualView: boolean;
+  panelState: PanelState;
   setVariables: (variables: CSSVariable[]) => void;
   setContextualVariables: (variables: ContextualCSSVariable[]) => void;
   setOriginalValues: (values: { [name: string]: string }) => void;
@@ -29,6 +38,9 @@ export interface DialsState {
   isUserChanged: (variableName: string) => boolean;
   getCurrentActiveContext: (variable: ContextualCSSVariable) => CSSVariableContext | null;
   updateContextualCSS: () => void;
+  setPanelPosition: (position: PanelPosition) => void;
+  setCustomPosition: (position: { x: number; y: number }) => void;
+  setDragging: (isDragging: boolean) => void;
 }
 
 // Style element for injecting contextual CSS
@@ -52,6 +64,18 @@ export const useDialsStore = create<DialsState>((set, get) => ({
   contextualUserChanges: {},
   activeMediaQuery: null,
   showContextualView: false,
+  panelState: {
+    position: (localStorage.getItem('dials-panel-position') as PanelPosition) || 'top-right',
+    isDragging: false,
+    customPosition: (() => {
+      try {
+        const saved = localStorage.getItem('dials-panel-custom-position');
+        return saved ? JSON.parse(saved) : undefined;
+      } catch {
+        return undefined;
+      }
+    })(),
+  },
 
   setVariables: (variables) => set({ variables }),
   setContextualVariables: (variables) => set({ contextualVariables: variables }),
@@ -254,6 +278,40 @@ export const useDialsStore = create<DialsState>((set, get) => ({
 
     // Update the style element content
     styleElement.textContent = cssRules.join('\n\n');
+  },
+
+  setPanelPosition: (position) => {
+    set((state) => ({
+      panelState: {
+        ...state.panelState,
+        position,
+        customPosition: undefined, // Clear custom position when using preset
+      }
+    }));
+    
+    // Persist position to localStorage
+    localStorage.setItem('dials-panel-position', position);
+  },
+
+  setCustomPosition: (customPosition) => {
+    set((state) => ({
+      panelState: {
+        ...state.panelState,
+        customPosition,
+      }
+    }));
+    
+    // Persist custom position to localStorage
+    localStorage.setItem('dials-panel-custom-position', JSON.stringify(customPosition));
+  },
+
+  setDragging: (isDragging) => {
+    set((state) => ({
+      panelState: {
+        ...state.panelState,
+        isDragging,
+      }
+    }));
   },
 
 }));

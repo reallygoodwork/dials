@@ -101,6 +101,7 @@ export function NumberInput({ value, onChange }: NumberInputProps) {
           step={step}
         />
         <select
+          className="dials-select"
           value={step}
           onChange={handleStepChange}
           aria-label="Step size"

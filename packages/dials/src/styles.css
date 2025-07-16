@@ -16,6 +16,11 @@
   box-shadow: var(--dials-shadow);
   scrollbar-width: thin;
   scrollbar-color: #52525b transparent;
+  transition: box-shadow 0.2s ease;
+}
+
+.dials-panel:hover {
+  box-shadow: var(--dials-shadow), 0 0 0 1px rgba(173, 250, 29, 0.1);
 }
 
 .dials-panel-header {
@@ -23,13 +28,96 @@
   border-bottom: 1px solid var(--dials-input-border-color);
 }
 
+.dials-panel-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.dials-position-controls {
+  position: relative;
+}
+
+.dials-position-btn {
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.dials-position-btn:hover {
+  background-color: hsla(0, 0%, 100%, 0.05);
+}
+
+.dials-position-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: var(--dials-surface);
+  border: 1px solid var(--dials-input-border-color);
+  border-radius: var(--dials-input-border-radius);
+  box-shadow: var(--dials-shadow);
+  z-index: 10000;
+  min-width: 140px;
+  overflow: hidden;
+}
+
+.dials-position-option {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: var(--dials-foreground);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  text-align: left;
+  border-bottom: 1px solid var(--dials-input-border-color);
+}
+
+.dials-position-option:last-child {
+  border-bottom: none;
+}
+
+.dials-position-option:hover {
+  background-color: hsla(0, 0%, 100%, 0.05);
+}
+
+.dials-position-option.active {
+  background-color: var(--dials-accent);
+  color: var(--dials-accent-foreground);
+}
+
+.dials-position-option.active:hover {
+  background-color: var(--dials-accent);
+}
+
 .dials-title {
   font-size: 1.25rem;
   font-weight: 400;
-  margin-bottom: 0.75rem;
-  letter-spacing: -0.015em;
+  margin: 0;
+  /* letter-spacing: -0.015em; */
   color: var(--dials-foreground);
-  font-family: var(--dials-font-family-mono);
+  font-family: var(--dials-font-family);
+  cursor: move;
+  user-select: none;
+  padding: 4px 8px;
+  margin: -4px -8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.dials-title:hover {
+  background-color: hsla(0, 0%, 100%, 0.05);
+}
+
+.dials-title:active {
+  background-color: hsla(0, 0%, 100%, 0.1);
 }
 
 .dials-tabs {
@@ -38,6 +126,7 @@
   background-color: var(--dials-input-border-color);
   border-radius: var(--dials-input-border-radius);
   padding: 2px;
+  /* height: 24px; */
 }
 
 .dials-tab {
@@ -46,7 +135,8 @@
   border: none;
   padding: 8px 12px;
   border-radius: calc(var(--dials-input-border-radius) - 2px);
-  font-size: 13px;
+  font-size: 11px;
+  font-family: var(--dials-font-family-mono);
   font-weight: 500;
   color: var(--dials-muted);
   cursor: pointer;
@@ -55,6 +145,7 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
+  height: 40px;
 }
 
 .dials-tab:hover {
@@ -72,10 +163,14 @@
   background-color: var(--dials-accent);
   color: var(--dials-background);
   border-radius: 10px;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--dials-font-family-mono);
   padding: 2px 6px;
+  min-width: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 11px;
-  font-weight: 600;
-  min-width: 18px;
   text-align: center;
 }
 
@@ -448,6 +543,10 @@
   outline: none;
 }
 
+.dials-variable-tabs-header {
+  display: flex;
+}
+
 .dials-range::-moz-range-thumb,
 .dials-range::-webkit-slider-thumb {
   -webkit-appearance: none;
@@ -457,6 +556,14 @@
   background: var(--dials-accent);
   cursor: pointer;
   border: none;
+}
+
+.dials-select {
+  background: var(--dials-surface);
+  border: 1px solid var(--dials-input-border-color);
+  border-radius: var(--dials-input-border-radius);
+  padding: 4px 8px;
+  font-size: var(--dials-font-size);
 }
 
 /* Context Tabs Styles */
@@ -835,8 +942,14 @@
 
 /* Contextual Variables Styles */
 .dials-contextual-item {
-  border-left: 3px solid var(--dials-accent) !important;
+  background: var(--dials-contextual-item-background);
   transition: all 0.2s ease;
+  border-left: 3px solid transparent;
+}
+
+.dials-contextual-item.dials-contextual-item-changed {
+  background: var(--dials-contextual-item-changed-background);
+  border-left: 3px solid var(--dials-accent);
 }
 
 .dials-contextual-item.collapsed {
@@ -879,6 +992,7 @@
   background: var(--dials-accent);
   color: var(--dials-background);
   font-size: 10px;
+  font-family: var(--dials-font-family-mono);
   font-weight: 600;
   padding: 2px 6px;
   border-radius: 10px;

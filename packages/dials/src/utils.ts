@@ -199,15 +199,8 @@ export function getCurrentActiveContexts(): string[] {
   // Always add the base context
   activeContexts.push('base');
 
-  // Check media queries that are currently matching
-  const mediaQueries = [
-    { query: '(max-width: 768px)', name: 'mobile' },
-    { query: '(min-width: 769px) and (max-width: 1024px)', name: 'tablet' },
-    { query: '(min-width: 1400px)', name: 'large-screen' },
-    { query: '(prefers-color-scheme: dark)', name: 'dark-theme' },
-    { query: '(prefers-contrast: high)', name: 'high-contrast' },
-    { query: '(prefers-reduced-motion: reduce)', name: 'reduced-motion' }
-  ];
+  // Dynamically get all media queries from detected contexts
+  const mediaQueries = getDetectedMediaQueries();
 
   mediaQueries.forEach(({ query, name }) => {
     if (window.matchMedia(query).matches) {
@@ -216,6 +209,242 @@ export function getCurrentActiveContexts(): string[] {
   });
 
   return activeContexts;
+}
+
+// Cache for detected media queries to avoid repeated detection
+let detectedMediaQueriesCache: { query: string; name: string }[] | null = null;
+
+export function getDetectedMediaQueries(): { query: string; name: string }[] {
+  if (detectedMediaQueriesCache) {
+    return detectedMediaQueriesCache;
+  }
+
+  const mediaQueries = new Set<string>();
+  
+  // Extract all media queries from stylesheets
+  const stylesheets = document.styleSheets;
+
+  for (let i = 0; i < stylesheets.length; i++) {
+    const sheet = stylesheets[i];
+    let rules: CSSRuleList;
+
+    try {
+      rules = sheet.cssRules;
+    } catch (e) {
+      continue;
+    }
+
+    extractMediaQueriesFromRules(Array.from(rules), mediaQueries);
+  }
+
+  // Convert to array with generated names
+  const result = Array.from(mediaQueries).map(query => ({
+    query,
+    name: generateContextName(query)
+  }));
+
+  detectedMediaQueriesCache = result;
+  return result;
+}
+
+function extractMediaQueriesFromRules(rules: CSSRule[], mediaQueries: Set<string>) {
+  for (const rule of rules) {
+    if (rule instanceof CSSMediaRule) {
+      mediaQueries.add(rule.media.mediaText);
+    } else if ('cssRules' in rule && rule.cssRules) {
+      extractMediaQueriesFromRules(Array.from(rule.cssRules as CSSRuleList), mediaQueries);
+    }
+  }
+}
+
+function generateContextName(mediaQuery: string): string {
+  // Generate a contextual name based on the media query
+  const query = mediaQuery.toLowerCase();
+  
+  // Common patterns
+  if (query.includes('max-width') && query.includes('768px')) return 'mobile';
+  if (query.includes('min-width: 769px') && query.includes('max-width') && query.includes('1024px')) return 'tablet';
+  if (query.includes('min-width') && query.includes('1400px')) return 'large-screen';
+  if (query.includes('prefers-color-scheme: dark')) return 'dark-theme';
+  if (query.includes('prefers-contrast: high')) return 'high-contrast';
+  if (query.includes('prefers-reduced-motion: reduce')) return 'reduced-motion';
+  if (query.includes('print')) return 'print';
+  
+  // Fallback: create a name from the query
+  return query
+    .replace(/[^\w\s-]/g, '') // Remove special chars except word chars, spaces, and hyphens
+    .replace(/\s+/g, '-') // Replace spaces with hyphens
+    .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
+    .substring(0, 20); // Limit length
+}
+
+export function clearDetectedMediaQueriesCache(): void {
+  detectedMediaQueriesCache = null;
+}
+
+// Interface for detected selector contexts
+export interface DetectedSelectorContext {
+  selector: string;
+  type: 'class' | 'attribute' | 'pseudo-class' | 'data-attribute';
+  contextName: string;
+  conditions?: string[]; // For things like [data-theme="dark"]
+}
+
+// Cache for detected selector contexts
+let detectedSelectorContextsCache: DetectedSelectorContext[] | null = null;
+
+export function getDetectedSelectorContexts(): DetectedSelectorContext[] {
+  if (detectedSelectorContextsCache) {
+    return detectedSelectorContextsCache;
+  }
+
+  const selectorContexts = new Map<string, DetectedSelectorContext>();
+  
+  // Extract all contextual selectors from stylesheets
+  const stylesheets = document.styleSheets;
+
+  for (let i = 0; i < stylesheets.length; i++) {
+    const sheet = stylesheets[i];
+    let rules: CSSRuleList;
+
+    try {
+      rules = sheet.cssRules;
+    } catch (e) {
+      continue;
+    }
+
+    extractSelectorContextsFromRules(Array.from(rules), selectorContexts);
+  }
+
+  const result = Array.from(selectorContexts.values());
+  detectedSelectorContextsCache = result;
+  return result;
+}
+
+function extractSelectorContextsFromRules(rules: CSSRule[], selectorContexts: Map<string, DetectedSelectorContext>) {
+  for (const rule of rules) {
+    if (rule instanceof CSSStyleRule) {
+      const selector = rule.selectorText;
+      
+      // Check if this selector contains CSS variables and represents a contextual state
+      let hasVariables = false;
+      for (let i = 0; i < rule.style.length; i++) {
+        if (rule.style[i].startsWith('--')) {
+          hasVariables = true;
+          break;
+        }
+      }
+
+      if (hasVariables) {
+        const context = analyzeSelectorContext(selector);
+        if (context) {
+          selectorContexts.set(selector, context);
+        }
+      }
+    } else if (rule instanceof CSSMediaRule) {
+      extractSelectorContextsFromRules(Array.from(rule.cssRules), selectorContexts);
+    } else if (rule instanceof CSSSupportsRule) {
+      extractSelectorContextsFromRules(Array.from(rule.cssRules), selectorContexts);
+    } else if ('cssRules' in rule && rule.cssRules) {
+      extractSelectorContextsFromRules(Array.from(rule.cssRules as CSSRuleList), selectorContexts);
+    }
+  }
+}
+
+function analyzeSelectorContext(selector: string): DetectedSelectorContext | null {
+  // Skip :root as it's the base context
+  if (selector.trim() === ':root') {
+    return null;
+  }
+
+  // Common dark mode patterns
+  if (selector.includes('.dark') || selector.includes('[data-theme="dark"]') || selector.includes('[data-mode="dark"]')) {
+    return {
+      selector,
+      type: selector.includes('[data-') ? 'data-attribute' : 'class',
+      contextName: 'dark-mode',
+      conditions: selector.includes('[data-') ? ['data-theme="dark"'] : ['.dark']
+    };
+  }
+
+  // High contrast patterns
+  if (selector.includes('.high-contrast') || selector.includes('[data-contrast="high"]')) {
+    return {
+      selector,
+      type: selector.includes('[data-') ? 'data-attribute' : 'class',
+      contextName: 'high-contrast',
+      conditions: selector.includes('[data-') ? ['data-contrast="high"'] : ['.high-contrast']
+    };
+  }
+
+  // Reduced motion patterns
+  if (selector.includes('.reduced-motion') || selector.includes('[data-motion="reduced"]')) {
+    return {
+      selector,
+      type: selector.includes('[data-') ? 'data-attribute' : 'class',
+      contextName: 'reduced-motion',
+      conditions: selector.includes('[data-') ? ['data-motion="reduced"'] : ['.reduced-motion']
+    };
+  }
+
+  // Theme patterns
+  if (selector.includes('[data-theme=')) {
+    const themeMatch = selector.match(/\[data-theme=["']([^"']+)["']\]/);
+    if (themeMatch) {
+      return {
+        selector,
+        type: 'data-attribute',
+        contextName: `theme-${themeMatch[1]}`,
+        conditions: [`data-theme="${themeMatch[1]}"`]
+      };
+    }
+  }
+
+  // Generic class-based contexts
+  const classMatch = selector.match(/\.([a-zA-Z0-9_-]+)/);
+  if (classMatch && selector.includes(':root')) {
+    const className = classMatch[1];
+    // Only include if it looks like a contextual class
+    if (className.includes('dark') || className.includes('light') || className.includes('theme') || 
+        className.includes('contrast') || className.includes('motion') || className.includes('mode')) {
+      return {
+        selector,
+        type: 'class',
+        contextName: className,
+        conditions: [`.${className}`]
+      };
+    }
+  }
+
+  return null;
+}
+
+export function clearDetectedSelectorContextsCache(): void {
+  detectedSelectorContextsCache = null;
+}
+
+export function isContextActive(context: DetectedSelectorContext): boolean {
+  if (!context.conditions) return false;
+
+  for (const condition of context.conditions) {
+    if (condition.startsWith('data-')) {
+      // Check data attributes on document element
+      const [attr, value] = condition.split('=');
+      const attrValue = document.documentElement.getAttribute(attr);
+      const expectedValue = value?.replace(/['"]/g, '');
+      if (attrValue === expectedValue) {
+        return true;
+      }
+    } else if (condition.startsWith('.')) {
+      // Check class on document element
+      const className = condition.slice(1);
+      if (document.documentElement.classList.contains(className)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 export function getActiveContextForVariable(variable: ContextualCSSVariable): CSSVariableContext | null {

@@ -1,6 +1,6 @@
 import { mountPanel } from "./Panel";
 import { useDialsStore, type CSSVariable } from "./store";
-import { detectContextualVariables } from "./utils";
+import { detectContextualVariables, clearDetectedMediaQueriesCache, clearDetectedSelectorContextsCache } from "./utils";
 
 let isInitialized = false;
 
@@ -109,6 +109,9 @@ export function startDials() {
       )
     );
     if (hasStyleChanges) {
+      // Clear the caches when stylesheets change
+      clearDetectedMediaQueriesCache();
+      clearDetectedSelectorContextsCache();
       setTimeout(detectCSSVariables, 100); // Debounce
     }
   });
